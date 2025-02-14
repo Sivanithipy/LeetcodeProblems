@@ -1,0 +1,25 @@
+class productofarrayexceptself {
+  public int[] productExceptSelf(int[] nums) {
+      int left[]=new int[nums.length];
+      int right[]=new int[nums.length];
+      left[0]=1;
+      right[nums.length-1]=1;
+      for(int i=1;i<nums.length;i++)
+      {
+          left[i]=left[i-1]*nums[i-1];
+
+      }
+       for(int i=nums.length-2;i>=0;i--)
+      {
+          right[i]=right[i+1]*nums[i+1];
+
+      }
+      for(int i=0;i<nums.length;i++)
+      {
+          if(i==0)nums[i]=right[i];
+          else if(i==nums.length-1)nums[i]=left[i];
+          else nums[i]=left[i]*right[i];
+      }
+      return nums;
+  }
+}
