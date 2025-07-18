@@ -1,0 +1,1934 @@
+EcommerceApplication.java
+
+// src/main/java/com/example/ecommerce/EcommerceApplication.java
+package com.example.ecommerce;
+
+import com.example.ecommerce.model.Product;
+import com.example.ecommerce.model.User;
+import com.example.ecommerce.model.User.Role; // Import Role
+import com.example.ecommerce.repository.ProductRepository;
+import com.example.ecommerce.repository.UserRepository;
+import com.example.ecommerce.service.DeliverySlotService;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.crypto.password.PasswordEncoder; // Import PasswordEncoder
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.math.BigDecimal;
+import java.util.Arrays;
+
+@SpringBootApplication
+public class EcommerceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(EcommerceApplication.class, args);
+	}
+
+	/**
+	 * Configures CORS (Cross-Origin Resource Sharing) to allow frontend
+	 * to communicate with the backend from different origins (e.g., when running
+	 * frontend on a different port/server).
+	 */
+	@Bean
+	public WebMvcConfigurer corsConfigurer() {
+		return new WebMvcConfigurer() {
+			@Override
+			public void addCorsMappings(CorsRegistry registry) {
+				registry.addMapping("/api/**") // Apply CORS to all /api endpoints
+						.allowedOrigins("*") // Allow all origins for development
+						.allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+						.allowedHeaders("*")
+						.allowCredentials(false); // Set to true if you handle credentials (cookies, auth headers)
+			}
+		};
+	}
+
+	/**
+	 * CommandLineRunner to insert dummy data into the database on application startup.
+	 * This is useful for testing and initial development.
+	 * Now also creates a dummy user with a hashed password and a dummy admin.
+	 */
+	@Bean
+	public CommandLineRunner demoData(ProductRepository productRepository,
+									  UserRepository userRepository,
+									  DeliverySlotService deliverySlotService,
+									  PasswordEncoder passwordEncoder) { // Inject PasswordEncoder
+		return args -> {
+			// Initialize dummy products if none exist
+			if (productRepository.count() == 0) {
+				Product p1 = new Product(null, "Laptop Pro X", "Powerful laptop for professionals", new BigDecimal("1200.00"), "https://placehold.co/300x200/007bff/ffffff?text=Laptop", "Electronics", 50);
+				Product p2 = new Product(null, "Wireless Mouse", "Ergonomic mouse for daily use", new BigDecimal("25.00"), "https://placehold.co/300x200/28a745/ffffff?text=Mouse", "Accessories", 200);
+				Product p3 = new Product(null, "Mechanical Keyboard", "RGB keyboard with clicky switches", new BigDecimal("80.00"), "https://placehold.co/300x200/ffc107/000000?text=Keyboard", "Accessories", 100);
+				Product p4 = new Product(null, "4K Monitor", "27-inch 4K IPS monitor", new BigDecimal("350.00"), "https://placehold.co/300x200/dc3545/ffffff?text=Monitor", "Electronics", 75);
+				Product p5 = new Product(null, "Webcam HD", "Full HD webcam for video calls", new BigDecimal("40.00"), "https://placehold.co/300x200/6f42c1/ffffff?text=Webcam", "Peripherals", 150);
+
+				productRepository.saveAll(Arrays.asList(p1, p2, p3, p4, p5));
+				System.out.println("Dummy products initialized.");
+			}
+
+			// Initialize dummy users if none exist
+			if (userRepository.count() == 0) {
+				// Regular User
+				User user1 = new User(null, "john_doe", passwordEncoder.encode("password123"), "john.doe@example.com", "123 Main St, Anytown, USA", "555-1234", Role.USER);
+				userRepository.save(user1);
+				System.out.println("Dummy user 'john_doe' initialized.");
+
+				// Admin User
+				User adminUser = new User(null, "admin", passwordEncoder.encode("adminpass"), "admin@example.com", "Admin HQ", "555-ADMIN", Role.ADMIN);
+				userRepository.save(adminUser);
+				System.out.println("Dummy admin 'admin' initialized.");
+			}
+
+			// Initialize dummy delivery slots
+			deliverySlotService.initializeDummySlots();
+		};
+	}
+}
+
+
+
+KeyGenerator.java
+
+// src/main/java/com/example/ecommerce/KeyGenerator.java (or similar path)
+package com.example.ecommerce; // Adjust package based on where you put it
+
+import io.jsonwebtoken.security.Keys;
+import java.util.Base64;
+
+public class KeyGenerator {
+    public static void main(String[] args) {
+        // Generates a secure random key suitable for HS256 algorithm
+        byte[] keyBytes = Keys.secretKeyFor(io.jsonwebtoken.SignatureAlgorithm.HS256).getEncoded();
+
+        // Encodes the key bytes into a Base64 string
+        String base64Key = Base64.getEncoder().encodeToString(keyBytes);
+
+        System.out.println("Generated JWT Secret Key (Base64 Encoded):");
+        System.out.println(base64Key);
+        System.out.println("\nCopy this key and paste it into your application.properties for 'jwt.secret-key'.");
+    }
+}
+
+
+ApplicationConfig.java
+
+package com.example.ecommerce.config;
+
+import com.example.ecommerce.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+/**
+ * Application-specific configuration for Spring Security.
+ * Defines beans for UserDetailsService, PasswordEncoder, and AuthenticationProvider.
+ */
+@Configuration
+@RequiredArgsConstructor
+public class ApplicationConfig {
+
+    private final UserRepository userRepository;
+
+    /**
+     * Defines how to retrieve user details from the database.
+     */
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return username -> userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+    }
+
+    /**
+     * Defines the authentication provider (DaoAuthenticationProvider uses UserDetailsService and PasswordEncoder).
+     */
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService());
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    /**
+     * Exposes the AuthenticationManager bean.
+     */
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    /**
+     * Defines the password encoder (BCrypt for strong hashing).
+     */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+
+
+SecurityConfig.java
+
+// src/main/java/com/example/ecommerce/config/SecurityConfig.java
+package com.example.ecommerce.config;
+
+import com.example.ecommerce.security.JwtAuthenticationFilter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
+
+/**
+ * Main Spring Security configuration class.
+ * Configures security filters, authorization rules, and CORS.
+ */
+@Configuration
+@EnableWebSecurity
+@RequiredArgsConstructor // Lombok annotation to generate constructor for final fields
+public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final AuthenticationProvider authenticationProvider;
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(csrf -> csrf.disable()) // Disable CSRF for stateless API
+                .cors(cors -> cors.configurationSource((CorsConfigurationSource) corsConfigurationSource())) // Enable CORS
+                .authorizeHttpRequests(auth -> auth
+                        // Allow unauthenticated access to static resources and authentication endpoints
+                        .requestMatchers(
+                                "/", // Root path
+                                "/index.html",
+                                "/cart.html",
+                                "/checkout.html",
+                                "/myorders.html",
+                                "/css/**",
+                                "/js/**",
+                                "/api/auth/**", // Auth endpoints (register, login)
+                                "/api/products/**" // Products can be viewed by anyone
+                        ).permitAll()
+                        // All other API requests require authentication
+                        .requestMatchers("/api/**").authenticated()
+                        .anyRequest().authenticated() // Any other request also requires authentication
+                )
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS) // Use stateless sessions (JWT)
+                )
+                .authenticationProvider(authenticationProvider) // Set custom authentication provider
+                // Add JWT filter before UsernamePasswordAuthenticationFilter
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    /**
+     * Configures CORS for the application.
+     * Allows requests from any origin for development.
+     */
+    @Bean
+    public CorsFilter corsConfigurationSource() {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        CorsConfiguration config = new CorsConfiguration();
+        config.addAllowedOrigin("*"); // Allow all origins for development
+        config.addAllowedHeader("*"); // Allow all headers
+        config.addAllowedMethod("*"); // Allow all HTTP methods (GET, POST, PUT, DELETE, OPTIONS)
+        source.registerCorsConfiguration("/**", config); // Apply to all paths
+        return new CorsFilter(source);
+    }
+}
+
+
+
+WebConfig.java
+
+package com.example.ecommerce.config;
+
+public class WebConfig {
+}
+
+
+
+AuthenticationController.java
+
+// src/main/java/com/example/ecommerce/controller/AuthenticationController.java
+package com.example.ecommerce.controller;
+
+import com.example.ecommerce.service.AuthenticationService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+/**
+ * REST Controller for user authentication (registration and login).
+ */
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "*") // Allow CORS for auth endpoints
+public class AuthenticationController {
+
+    private final AuthenticationService authenticationService;
+
+    /**
+     * Registers a new user.
+     * POST /api/auth/register
+     * Request Body: { "username": "newuser", "email": "newuser@example.com", "password": "securepassword" }
+     */
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody Map<String, String> request) {
+        try {
+            Map<String, String> response = authenticationService.register(request);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Authenticates an existing user.
+     * POST /api/auth/authenticate
+     * Request Body: { "username": "john_doe", "password": "password123" }
+     */
+    @PostMapping("/authenticate")
+    public ResponseEntity<?> authenticate(@RequestBody Map<String, String> request) {
+        try {
+            Map<String, String> response = authenticationService.authenticate(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) { // Catch broader exception for authentication failures
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Invalid username or password"));
+        }
+    }
+}
+
+
+CartController.java
+
+package com.example.ecommerce.controller;
+
+import com.example.ecommerce.service.CartService;
+import com.example.ecommerce.service.ProductService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize; // Import PreAuthorize
+import org.springframework.security.core.Authentication; // Import Authentication
+import org.springframework.security.core.context.SecurityContextHolder; // Import SecurityContextHolder
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * REST Controller for managing the user's shopping cart.
+ * All cart operations require authentication.
+ */
+@RestController
+@RequestMapping("/api/cart")
+@CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('USER') or hasRole('ADMIN')") // All cart operations require a logged-in user
+public class CartController {
+
+    @Autowired
+    private CartService cartService;
+    @Autowired
+    private ProductService productService;
+
+    // Helper method to get authenticated user's ID
+    private Long getCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof com.example.ecommerce.model.User) {
+            return ((com.example.ecommerce.model.User) authentication.getPrincipal()).getId();
+        }
+        throw new IllegalStateException("User not authenticated or user ID not available.");
+    }
+
+    /**
+     * Get the current cart for the authenticated user.
+     * GET /api/cart
+     * userId is now retrieved from authentication context.
+     */
+    @GetMapping
+    public ResponseEntity<Map<Long, Integer>> getCart() {
+        Long userId = getCurrentUserId();
+        Map<Long, Integer> cart = cartService.getCart(userId);
+        return ResponseEntity.ok(cart);
+    }
+
+    /**
+     * Add a product to the cart for the authenticated user.
+     * POST /api/cart/add
+     * Request Body: { "productId": 101, "quantity": 1 }
+     */
+    @PostMapping("/add")
+    public ResponseEntity<Void> addProductToCart(@RequestBody Map<String, Object> payload) {
+        Long userId = getCurrentUserId();
+        Long productId = ((Number) payload.get("productId")).longValue();
+        Integer quantity = ((Number) payload.get("quantity")).intValue();
+
+        cartService.addProductToCart(userId, productId, quantity);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Update product quantity in the cart for the authenticated user.
+     * PUT /api/cart/update
+     * Request Body: { "productId": 101, "newQuantity": 2 }
+     */
+    @PutMapping("/update")
+    public ResponseEntity<Void> updateProductQuantityInCart(@RequestBody Map<String, Object> payload) {
+        Long userId = getCurrentUserId();
+        Long productId = ((Number) payload.get("productId")).longValue();
+        Integer newQuantity = ((Number) payload.get("newQuantity")).intValue();
+
+        cartService.updateProductQuantityInCart(userId, productId, newQuantity);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Remove a product from the cart for the authenticated user.
+     * DELETE /api/cart/remove?productId={productId}
+     */
+    @DeleteMapping("/remove")
+    public ResponseEntity<Void> removeProductFromCart(@RequestParam Long productId) {
+        Long userId = getCurrentUserId();
+        cartService.removeProductFromCart(userId, productId);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Clear the entire cart for the authenticated user.
+     * DELETE /api/cart/clear
+     */
+    @DeleteMapping("/clear")
+    public ResponseEntity<Void> clearCart() {
+        Long userId = getCurrentUserId();
+        cartService.clearCart(userId);
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Get the total amount of the items in the cart for the authenticated user.
+     * GET /api/cart/total
+     */
+    @GetMapping("/total")
+    public ResponseEntity<Map<String, BigDecimal>> getCartTotal() {
+        Long userId = getCurrentUserId();
+        BigDecimal total = cartService.calculateCartTotal(userId, productService);
+        Map<String, BigDecimal> response = new HashMap<>();
+        response.put("total", total);
+        return ResponseEntity.ok(response);
+    }
+}
+
+
+DeliverySlotController.java
+
+package com.example.ecommerce.controller;
+
+import com.example.ecommerce.model.DeliverySlot;
+import com.example.ecommerce.service.DeliverySlotService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize; // Import PreAuthorize
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * REST Controller for managing and retrieving delivery slots.
+ */
+@RestController
+@RequestMapping("/api/delivery-slots")
+@CrossOrigin(origins = "*") // Allow requests from any origin for frontend development
+public class DeliverySlotController {
+
+    @Autowired
+    private DeliverySlotService deliverySlotService;
+
+    /**
+     * Get available delivery slots for a specific date. Accessible to anyone.
+     * GET /api/delivery-slots/available?date=2025-07-20
+     */
+    @GetMapping("/available")
+    public ResponseEntity<List<DeliverySlot>> getAvailableSlotsForDate(@RequestParam String date) {
+        LocalDate localDate = LocalDate.parse(date); // Parse date string (e.g., "YYYY-MM-DD")
+        List<DeliverySlot> slots = deliverySlotService.getAvailableSlotsForDate(localDate);
+        return ResponseEntity.ok(slots);
+    }
+
+    /**
+     * Create a new delivery slot. Requires ADMIN role.
+     * POST /api/delivery-slots
+     * Request Body: { "slotDate": "2025-07-20", "startTime": "09:00:00", "endTime": "11:00:00", "capacity": 10, "currentBookings": 0 }
+     */
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')") // Only ADMIN can create delivery slots
+    public ResponseEntity<DeliverySlot> createDeliverySlot(@RequestBody DeliverySlot deliverySlot) {
+        DeliverySlot createdSlot = deliverySlotService.createDeliverySlot(deliverySlot);
+        return ResponseEntity.ok(createdSlot);
+    }
+}
+
+
+OrderController.java
+
+package com.example.ecommerce.controller;
+
+import com.example.ecommerce.model.Order;
+import com.example.ecommerce.service.OrderService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize; // Import PreAuthorize
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * REST Controller for managing orders and checkout process.
+ * All order operations require authentication.
+ */
+@RestController
+@RequestMapping("/api/orders")
+@CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('USER') or hasRole('ADMIN')") // All order operations require a logged-in user
+public class OrderController {
+
+    @Autowired
+    private OrderService orderService;
+
+    // Helper method to get authenticated user's ID
+    private Long getCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof com.example.ecommerce.model.User) {
+            return ((com.example.ecommerce.model.User) authentication.getPrincipal()).getId();
+        }
+        throw new IllegalStateException("User not authenticated or user ID not available.");
+    }
+
+    /**
+     * Create a new order from the cart for the authenticated user.
+     * POST /api/orders
+     * Request Body: { "shippingAddress": "123 Main St", "deliverySlotId": 1, "scheduledDeliveryTime": "2025-07-20T16:00:00" }
+     * userId is now retrieved from authentication context.
+     */
+    @PostMapping
+    public ResponseEntity<?> createOrder(@RequestBody Map<String, Object> payload) {
+        try {
+            Long userId = getCurrentUserId(); // Get userId from authenticated context
+            String shippingAddress = (String) payload.get("shippingAddress");
+            Long deliverySlotId = ((Number) payload.get("deliverySlotId")).longValue();
+            LocalDateTime scheduledDeliveryTime = LocalDateTime.parse((String) payload.get("scheduledDeliveryTime"));
+
+            Order createdOrder = orderService.createOrder(userId, shippingAddress, deliverySlotId, scheduledDeliveryTime);
+            return new ResponseEntity<>(createdOrder, HttpStatus.CREATED);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all orders for the authenticated user.
+     * GET /api/orders/my
+     * userId is now retrieved from authentication context.
+     */
+    @GetMapping("/my")
+    public ResponseEntity<List<Order>> getUserOrders() {
+        try {
+            Long userId = getCurrentUserId(); // Get userId from authenticated context
+            List<Order> orders = orderService.getUserOrders(userId);
+            return ResponseEntity.ok(orders);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * Get a single order by ID. Requires authentication and ownership.
+     * GET /api/orders/{orderId}
+     */
+    @GetMapping("/{orderId}")
+    public ResponseEntity<Order> getOrderById(@PathVariable Long orderId) {
+        Long currentUserId = getCurrentUserId();
+        return orderService.getOrderById(orderId)
+                .filter(order -> order.getUser().getId().equals(currentUserId)) // Ensure user owns the order
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Reschedule delivery for an order. Requires authentication and ownership.
+     * PUT /api/orders/{orderId}/reschedule
+     * Request Body: { "newDeliverySlotId": 2, "newScheduledDeliveryTime": "2025-07-21T10:00:00" }
+     */
+    @PutMapping("/{orderId}/reschedule")
+    public ResponseEntity<?> rescheduleDelivery(@PathVariable Long orderId, @RequestBody Map<String, Object> payload) {
+        try {
+            Long currentUserId = getCurrentUserId();
+            Order order = orderService.getOrderById(orderId)
+                    .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+
+            if (!order.getUser().getId().equals(currentUserId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "You are not authorized to reschedule this order."));
+            }
+
+            Long newDeliverySlotId = ((Number) payload.get("newDeliverySlotId")).longValue();
+            LocalDateTime newScheduledDeliveryTime = LocalDateTime.parse((String) payload.get("newScheduledDeliveryTime"));
+
+            Order updatedOrder = orderService.rescheduleDelivery(orderId, newDeliverySlotId, newScheduledDeliveryTime);
+            return ResponseEntity.ok(updatedOrder);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        }
+    }
+}
+
+
+ProductController.java
+
+package com.example.ecommerce.controller;
+
+import com.example.ecommerce.model.Product;
+import com.example.ecommerce.service.ProductService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize; // Import PreAuthorize
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * REST Controller for managing products.
+ */
+@RestController
+@RequestMapping("/api/products")
+@CrossOrigin(origins = "*") // Allow requests from any origin for frontend development
+public class ProductController {
+
+    @Autowired
+    private ProductService productService;
+
+    /**
+     * Get all products. Accessible to anyone.
+     * GET /api/products
+     * GET /api/products?category=Electronics
+     * GET /api/products?name=laptop
+     */
+    @GetMapping
+    public ResponseEntity<List<Product>> getAllProducts(@RequestParam(required = false) String category,
+                                                        @RequestParam(required = false) String name) {
+        List<Product> products;
+        if (category != null && !category.isEmpty()) {
+            products = productService.getProductsByCategory(category);
+        } else if (name != null && !name.isEmpty()) {
+            products = productService.getProductsByCategory(name);
+        } else {
+            products = productService.getAllProducts();
+        }
+        return ResponseEntity.ok(products);
+    }
+
+    /**
+     * Get a product by ID. Accessible to anyone.
+     * GET /api/products/{id}
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<Product> getProductById(@PathVariable Long id) {
+        return productService.getProductById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Create a new product. Requires ADMIN role.
+     * POST /api/products
+     */
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')") // Only ADMIN can create products
+    public ResponseEntity<Product> createProduct(@RequestBody Product product) {
+        Product createdProduct = productService.createProduct(product);
+        return new ResponseEntity<>(createdProduct, HttpStatus.CREATED);
+    }
+
+    /**
+     * Update an existing product. Requires ADMIN role.
+     * PUT /api/products/{id}
+     */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')") // Only ADMIN can update products
+    public ResponseEntity<Product> updateProduct(@PathVariable Long id, @RequestBody Product product) {
+        try {
+            Product updatedProduct = productService.updateProduct(id, product);
+            return ResponseEntity.ok(updatedProduct);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * Delete a product. Requires ADMIN role.
+     * DELETE /api/products/{id}
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')") // Only ADMIN can delete products
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        productService.deleteProduct(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+
+DeliverySlot.java
+
+package com.example.ecommerce.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+
+/**
+ * Represents a predefined delivery time slot.
+ * This entity defines available slots (e.g., "9-11 AM", "2-4 PM" for a specific date).
+ * The actual chosen delivery time for an order will be stored in the Order entity.
+ */
+@Entity
+@Table(name = "delivery_slots")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class DeliverySlot {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private LocalDate slotDate; // The specific date for this slot
+
+    @Column(nullable = false)
+    private LocalTime startTime;
+
+    @Column(nullable = false)
+    private LocalTime endTime;
+
+    @Column(nullable = false)
+    private Integer capacity; // Max number of deliveries for this slot
+
+    @Column(nullable = false)
+    private Integer currentBookings; // Current number of bookings for this slot
+
+    // Helper method to check availability
+    public boolean isAvailable() {
+        return currentBookings < capacity;
+    }
+
+    // You might want a unique constraint on (slotDate, startTime, endTime)
+    // @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"slotDate", "startTime", "endTime"}))
+}
+
+
+
+Order.java
+
+package com.example.ecommerce.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * Represents a customer order.
+ */
+@Entity
+@Table(name = "orders")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Order {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY) // Many orders to one user
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Column(nullable = false)
+    private LocalDateTime orderDate;
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal totalAmount;
+
+    @Enumerated(EnumType.STRING) // Store enum as string in DB
+    @Column(nullable = false)
+    private OrderStatus status; // e.g., PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+
+    // Delivery details
+    @ManyToOne(fetch = FetchType.LAZY) // Many orders can choose the same delivery slot definition
+    @JoinColumn(name = "delivery_slot_id", nullable = true) // Nullable if delivery slot is chosen later
+    private DeliverySlot deliverySlot; // The chosen delivery slot definition
+
+    // Store the actual chosen date and time for the order
+    @Column(nullable = true) // Nullable until chosen
+    private LocalDateTime scheduledDeliveryTime; // Exact date and time
+
+    @Column(length = 500, nullable = false) // Shipping address
+    private String shippingAddress;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderItem> orderItems;
+
+    public enum OrderStatus {
+        PENDING, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED, RESCHEDULED
+    }
+}
+
+
+OrderItem.java
+
+package com.example.ecommerce.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
+import java.math.BigDecimal;
+
+/**
+ * Represents an item within an order.
+ */
+@Entity
+@Table(name = "order_items")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderItem {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    private Order order;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id", nullable = false)
+    private Product product;
+
+    @Column(nullable = false)
+    private Integer quantity;
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal priceAtPurchase; // Price of the product at the time of purchase
+}
+
+
+
+Product.java
+
+package com.example.ecommerce.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
+import java.math.BigDecimal;
+
+/**
+ * Represents a product available in the e-commerce store.
+ */
+@Entity
+@Table(name = "products")
+@Data // Lombok annotation to generate getters, setters, toString, equals, hashCode
+@NoArgsConstructor // Lombok annotation to generate no-argument constructor
+@AllArgsConstructor // Lombok annotation to generate constructor with all fields
+public class Product {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Column(length = 1000) // Allow longer descriptions
+    private String description;
+
+    @Column(nullable = false, precision = 10, scale = 2) // Precision for currency
+    private BigDecimal price;
+
+    private String imageUrl; // URL to the product image
+
+    private String category;
+
+    @Column(nullable = false)
+    private Integer stockQuantity;
+}
+
+
+User.java
+
+// src/main/java/com/example/ecommerce/model/User.java
+package com.example.ecommerce.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import java.util.Collection;
+import java.util.List;
+
+/**
+ * Represents a user of the e-commerce application.
+ * Implements UserDetails for Spring Security integration.
+ */
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class User implements UserDetails { // Implement UserDetails
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    @Column(nullable = false)
+    private String password; // Store hashed passwords!
+
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    @Column(length = 500)
+    private String address;
+
+    private String phoneNumber;
+
+    // For Spring Security roles (simplified to a single role for now)
+    @Enumerated(EnumType.STRING)
+    private Role role;
+
+    public enum Role {
+        USER, ADMIN
+    }
+
+    // --- UserDetails Interface Implementations ---
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        // Assign roles as GrantedAuthority objects
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true; // For simplicity, account never expires
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true; // For simplicity, account is never locked
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true; // For simplicity, credentials never expire
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true; // For simplicity, user is always enabled
+    }
+}
+
+
+
+DeliverySlotRepository.java
+
+package com.example.ecommerce.repository;
+
+import com.example.ecommerce.model.DeliverySlot;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * Repository interface for DeliverySlot entity.
+ */
+@Repository
+public interface DeliverySlotRepository extends JpaRepository<DeliverySlot, Long> {
+    // Find all delivery slots for a specific date
+    List<DeliverySlot> findBySlotDate(LocalDate slotDate);
+
+    // Find available delivery slots for a specific date (where currentBookings < capacity)
+    List<DeliverySlot> findBySlotDateAndCurrentBookingsLessThan(LocalDate slotDate, Integer capacity);
+}
+
+
+OrderRepository.java
+
+// src/main/java/com/example/ecommerce/repository/OrderRepository.java
+package com.example.ecommerce.repository;
+
+import com.example.ecommerce.model.Order;
+import com.example.ecommerce.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+import java.util.List;
+
+/**
+ * Repository interface for Order entity.
+ */
+@Repository
+public interface OrderRepository extends JpaRepository<Order, Long> {
+    // Find all orders for a specific user, eagerly fetching deliverySlot and orderItems
+    // This custom query prevents LazyInitializationException during serialization
+    @Query("SELECT o FROM Order o JOIN FETCH o.user u LEFT JOIN FETCH o.deliverySlot ds LEFT JOIN FETCH o.orderItems oi WHERE u = :user")
+    List<Order> findByUserWithDetails(User user); // New method name to indicate eager fetching
+
+    List<Order> findByUser(User user);
+}
+
+
+
+ProductRepository.java
+
+// src/main/java/com/example/ecommerce/repository/ProductRepository.java
+package com.example.ecommerce.repository;
+
+import com.example.ecommerce.model.Product;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.List;
+
+/**
+ * Repository interface for Product entity.
+ * Provides CRUD operations and custom query methods.
+ */
+@Repository
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    // Custom query to find products by category
+    List<Product> findByCategory(String category);
+
+    // Custom query to find products by name containing a keyword (case-insensitive)
+    List<Product> findByNameContainingIgnoreCase(String name);
+}
+
+
+UserRepository.java
+
+package com.example.ecommerce.repository;
+
+import com.example.ecommerce.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.Optional;
+
+/**
+ * Repository interface for User entity.
+ */
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByUsername(String username);
+    Optional<User> findByEmail(String email);
+}
+
+
+JwtAuthenticationFilter.java
+
+package com.example.ecommerce.security;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.lang.NonNull;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
+/**
+ * Custom filter to intercept requests and validate JWT tokens.
+ */
+@Component
+@RequiredArgsConstructor
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private final JwtService jwtService;
+    private final UserDetailsService userDetailsService;
+
+    @Override
+    protected void doFilterInternal(
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain
+    ) throws ServletException, IOException {
+        final String authHeader = request.getHeader("Authorization");
+        final String jwt;
+        final String username;
+
+        // Check if Authorization header is present and starts with "Bearer "
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response); // Continue to next filter
+            return;
+        }
+
+        // Extract JWT token
+        jwt = authHeader.substring(7);
+        username = jwtService.extractUsername(jwt); // Extract username from token
+
+        // If username is found and no authentication is currently set in SecurityContext
+        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+
+            // If token is valid, authenticate the user
+            if (jwtService.isTokenValid(jwt, userDetails)) {
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null, // Credentials are null as we're using JWT
+                        userDetails.getAuthorities()
+                );
+                authToken.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(request)
+                );
+                // Update SecurityContextHolder
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        }
+        filterChain.doFilter(request, response); // Continue to next filter
+    }
+}
+
+
+
+JwtService.java
+
+// src/main/java/com/example/ecommerce/security/JwtService.java
+package com.example.ecommerce.security;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+
+import java.security.Key;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
+/**
+ * Service for JWT token generation and validation.
+ */
+@Service
+public class JwtService {
+
+    // Secret key for signing JWT tokens. Keep this secure!
+    // Loaded from application.properties (e.g., jwt.secret-key=YOUR_SUPER_SECRET_KEY_HERE)
+    @Value("${jwt.secret-key}")
+    private String secretKey;
+
+    // Token expiration time in milliseconds (e.g., 24 hours)
+    @Value("${jwt.expiration}")
+    private long jwtExpiration;
+
+    /**
+     * Extracts the username (subject) from a JWT token.
+     */
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    /**
+     * Extracts a specific claim from a JWT token.
+     */
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+
+    /**
+     * Generates a JWT token for a given UserDetails.
+     */
+    public String generateToken(UserDetails userDetails) {
+        return generateToken(new HashMap<>(), userDetails);
+    }
+
+    /**
+     * Generates a JWT token with extra claims.
+     */
+    public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
+        return Jwts
+                .builder()
+                .setClaims(extraClaims)
+                .setSubject(userDetails.getUsername())
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
+                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    /**
+     * Validates a JWT token against UserDetails.
+     */
+    public boolean isTokenValid(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+    }
+
+    /**
+     * Checks if a JWT token is expired.
+     */
+    private boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    /**
+     * Extracts the expiration date from a JWT token.
+     */
+    private Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    /**
+     * Extracts all claims from a JWT token.
+     */
+    private Claims extractAllClaims(String token) {
+        return Jwts
+                .parserBuilder()
+                .setSigningKey(getSignInKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+
+    /**
+     * Returns the signing key for JWT.
+     */
+    private Key getSignInKey() {
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+}
+
+// src/main/java/com/example/ecommerce/security/JwtAuthenticationFilter.java
+
+
+
+AuthenticationService.java
+
+// src/main/java/com/example/ecommerce/service/AuthenticationService.java
+package com.example.ecommerce.service;
+
+import com.example.ecommerce.model.User;
+import com.example.ecommerce.model.User.Role;
+import com.example.ecommerce.repository.UserRepository;
+import com.example.ecommerce.security.JwtService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+/**
+ * Service for user registration and authentication.
+ */
+@Service
+@RequiredArgsConstructor
+public class AuthenticationService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final AuthenticationManager authenticationManager;
+
+    /**
+     * Registers a new user.
+     * @param request A map containing username, email, and password.
+     * @return A map with the generated JWT token and user ID.
+     * @throws RuntimeException if username or email already exists.
+     */
+    @Transactional
+    public Map<String, String> register(Map<String, String> request) {
+        String username = request.get("username");
+        String email = request.get("email");
+        String password = request.get("password");
+
+        if (userRepository.findByUsername(username).isPresent()) {
+            throw new RuntimeException("Username already taken: " + username);
+        }
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new RuntimeException("Email already registered: " + email);
+        }
+
+        User user = new User();
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode(password)); // Hash the password
+        user.setRole(Role.USER); // Default role for new users
+
+        User savedUser = userRepository.save(user);
+        String jwtToken = jwtService.generateToken(savedUser);
+
+        return Map.of("token", jwtToken, "userId", savedUser.getId().toString(), "username", savedUser.getUsername());
+    }
+
+    /**
+     * Authenticates an existing user.
+     * @param request A map containing username and password.
+     * @return A map with the generated JWT token and user ID.
+     */
+    public Map<String, String> authenticate(Map<String, String> request) {
+        String username = request.get("username");
+        String password = request.get("password");
+
+        // Authenticate using Spring Security's AuthenticationManager
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        username,
+                        password
+                )
+        );
+        // If authentication is successful, retrieve user details and generate JWT
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found after authentication: " + username)); // Should not happen
+
+        String jwtToken = jwtService.generateToken(user);
+        return Map.of("token", jwtToken, "userId", user.getId().toString(), "username", user.getUsername());
+    }
+}
+
+
+
+
+CartService.java
+
+package com.example.ecommerce.service;
+
+import com.example.ecommerce.model.Product;
+import com.example.ecommerce.model.User;
+import org.springframework.stereotype.Service;
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * A simplified in-memory Cart Service.
+ * In a real application, you'd likely persist cart data (e.g., in a database, Redis, or session).
+ * This service simulates cart operations for a given user.
+ */
+@Service
+public class CartService {
+
+    // Key: userId, Value: Map of ProductId to Quantity
+    private final Map<Long, Map<Long, Integer>> userCarts = new HashMap<>();
+
+    // In a real app, you'd fetch product details from ProductService
+    // For simplicity, we'll assume product details are available when adding to cart
+    // Or you'd store Product objects directly in the cart map.
+
+    /**
+     * Adds a product to the user's cart.
+     * @param userId The ID of the user.
+     * @param productId The ID of the product to add.
+     * @param quantity The quantity to add.
+     */
+    public void addProductToCart(Long userId, Long productId, int quantity) {
+        userCarts.computeIfAbsent(userId, k -> new HashMap<>())
+                .merge(productId, quantity, Integer::sum);
+    }
+
+    /**
+     * Updates the quantity of a product in the user's cart.
+     * @param userId The ID of the user.
+     * @param productId The ID of the product to update.
+     * @param newQuantity The new quantity.
+     */
+    public void updateProductQuantityInCart(Long userId, Long productId, int newQuantity) {
+        if (newQuantity <= 0) {
+            removeProductFromCart(userId, productId);
+        } else {
+            userCarts.getOrDefault(userId, new HashMap<>()).put(productId, newQuantity);
+        }
+    }
+
+    /**
+     * Removes a product from the user's cart.
+     * @param userId The ID of the user.
+     * @param productId The ID of the product to remove.
+     */
+    public void removeProductFromCart(Long userId, Long productId) {
+        userCarts.getOrDefault(userId, new HashMap<>()).remove(productId);
+    }
+
+    /**
+     * Gets the current cart for a user.
+     * @param userId The ID of the user.
+     * @return A map where key is ProductId and value is Quantity.
+     */
+    public Map<Long, Integer> getCart(Long userId) {
+        return userCarts.getOrDefault(userId, new HashMap<>());
+    }
+
+    /**
+     * Clears the cart for a user.
+     * @param userId The ID of the user.
+     */
+    public void clearCart(Long userId) {
+        userCarts.remove(userId);
+    }
+
+    // In a real scenario, you'd calculate total amount based on actual product prices
+    public BigDecimal calculateCartTotal(Long userId, ProductService productService) {
+        Map<Long, Integer> cart = getCart(userId);
+        BigDecimal total = BigDecimal.ZERO;
+        for (Map.Entry<Long, Integer> entry : cart.entrySet()) {
+            Long productId = entry.getKey();
+            Integer quantity = entry.getValue();
+            Optional<Product> productOptional = productService.getProductById(productId);
+            if (productOptional.isPresent()) {
+                total = total.add(productOptional.get().getPrice().multiply(new BigDecimal(quantity)));
+            }
+        }
+        return total;
+    }
+}
+
+
+DeliverySlotService.java
+
+package com.example.ecommerce.service;
+
+import com.example.ecommerce.model.DeliverySlot;
+import com.example.ecommerce.repository.DeliverySlotRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+/**
+ * Service layer for Delivery Slot management.
+ */
+@Service
+public class DeliverySlotService {
+
+    @Autowired
+    private DeliverySlotRepository deliverySlotRepository;
+
+    /**
+     * Creates a new delivery slot.
+     * @param deliverySlot The DeliverySlot object to save.
+     * @return The saved DeliverySlot.
+     */
+    public DeliverySlot createDeliverySlot(DeliverySlot deliverySlot) {
+        return deliverySlotRepository.save(deliverySlot);
+    }
+
+    /**
+     * Retrieves a delivery slot by its ID.
+     * @param id The ID of the delivery slot.
+     * @return An Optional containing the DeliverySlot if found.
+     */
+    public Optional<DeliverySlot> getDeliverySlotById(Long id) {
+        return deliverySlotRepository.findById(id);
+    }
+
+    /**
+     * Retrieves all delivery slots for a specific date that have available capacity.
+     * @param date The date to query for.
+     * @return A list of available DeliverySlot objects.
+     */
+    public List<DeliverySlot> getAvailableSlotsForDate(LocalDate date) {
+        // This leverages the custom query method in the repository
+        // Alternatively, fetch all by date and then filter in Java:
+        return deliverySlotRepository.findBySlotDate(date).stream()
+                .filter(DeliverySlot::isAvailable)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Initializes dummy delivery slots for a few upcoming days.
+     * This is for demonstration purposes. In a real app, these would be managed via an admin panel.
+     */
+    public void initializeDummySlots() {
+        if (deliverySlotRepository.count() == 0) { // Only initialize if no slots exist
+            LocalDate today = LocalDate.now();
+            int baseCapacity = 10; // Example capacity
+
+            for (int i = 0; i < 7; i++) { // For the next 7 days
+                LocalDate slotDate = today.plusDays(i);
+
+                // Morning slots
+                createDeliverySlot(new DeliverySlot(null, slotDate, LocalTime.of(9, 0), LocalTime.of(11, 0), baseCapacity, 0));
+                createDeliverySlot(new DeliverySlot(null, slotDate, LocalTime.of(11, 0), LocalTime.of(13, 0), baseCapacity, 0));
+                // Afternoon slots
+                createDeliverySlot(new DeliverySlot(null, slotDate, LocalTime.of(14, 0), LocalTime.of(16, 0), baseCapacity, 0));
+                createDeliverySlot(new DeliverySlot(null, slotDate, LocalTime.of(16, 0), LocalTime.of(18, 0), baseCapacity, 0));
+                // Evening slots
+                createDeliverySlot(new DeliverySlot(null, slotDate, LocalTime.of(19, 0), LocalTime.of(21, 0), baseCapacity, 0));
+            }
+            System.out.println("Dummy delivery slots initialized.");
+        }
+    }
+}
+
+
+OrderService.java
+
+package com.example.ecommerce.service;
+
+import com.example.ecommerce.model.*;
+import com.example.ecommerce.repository.OrderRepository;
+import com.example.ecommerce.repository.ProductRepository;
+import com.example.ecommerce.repository.UserRepository;
+import com.example.ecommerce.repository.DeliverySlotRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional; // Import Transactional
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Service layer for Order-related business logic, including checkout and rescheduling.
+ */
+@Service
+public class OrderService {
+
+    @Autowired
+    private OrderRepository orderRepository;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private ProductRepository productRepository;
+    @Autowired
+    private DeliverySlotRepository deliverySlotRepository;
+    @Autowired
+    private CartService cartService; // To interact with the cart
+
+    /**
+     * Creates a new order from the user's cart.
+     * This method is transactional to ensure atomicity of operations.
+     *
+     * @param userId The ID of the user placing the order.
+     * @param shippingAddress The shipping address for the order.
+     * @param deliverySlotId The ID of the chosen delivery slot.
+     * @param scheduledDeliveryTime The exact date and time for delivery.
+     * @return The created Order object.
+     * @throws RuntimeException if user, product, or delivery slot not found, or if slot is unavailable.
+     */
+    @Transactional
+    public Order createOrder(Long userId, String shippingAddress, Long deliverySlotId, LocalDateTime scheduledDeliveryTime) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        DeliverySlot chosenSlot = deliverySlotRepository.findById(deliverySlotId)
+                .orElseThrow(() -> new RuntimeException("Delivery slot not found with id: " + deliverySlotId));
+
+        if (!chosenSlot.isAvailable()) {
+            throw new RuntimeException("Chosen delivery slot is no longer available.");
+        }
+
+        Map<Long, Integer> cartItems = cartService.getCart(userId);
+        if (cartItems.isEmpty()) {
+            throw new RuntimeException("Cannot create order: Cart is empty.");
+        }
+
+        Order order = new Order();
+        order.setUser(user);
+        order.setOrderDate(LocalDateTime.now());
+        order.setStatus(Order.OrderStatus.PENDING); // Initial status
+        order.setShippingAddress(shippingAddress);
+        order.setDeliverySlot(chosenSlot);
+        order.setScheduledDeliveryTime(scheduledDeliveryTime);
+
+        List<OrderItem> orderItems = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
+        for (Map.Entry<Long, Integer> entry : cartItems.entrySet()) {
+            Long productId = entry.getKey();
+            Integer quantity = entry.getValue();
+
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
+
+            if (product.getStockQuantity() < quantity) {
+                throw new RuntimeException("Not enough stock for product: " + product.getName());
+            }
+
+            OrderItem orderItem = new OrderItem();
+            orderItem.setOrder(order);
+            orderItem.setProduct(product);
+            orderItem.setQuantity(quantity);
+            orderItem.setPriceAtPurchase(product.getPrice()); // Capture price at time of purchase
+            orderItems.add(orderItem);
+
+            totalAmount = totalAmount.add(product.getPrice().multiply(new BigDecimal(quantity)));
+
+            // Decrease product stock
+            product.setStockQuantity(product.getStockQuantity() - quantity);
+            productRepository.save(product);
+        }
+
+        order.setOrderItems(orderItems);
+        order.setTotalAmount(totalAmount);
+
+        // Increment current bookings for the chosen delivery slot
+        chosenSlot.setCurrentBookings(chosenSlot.getCurrentBookings() + 1);
+        deliverySlotRepository.save(chosenSlot);
+
+        // Clear the user's cart after order creation
+        cartService.clearCart(userId);
+
+        return orderRepository.save(order);
+    }
+
+    /**
+     * Retrieves all orders for a specific user.
+     * @param userId The ID of the user.
+     * @return A list of orders.
+     */
+    @Transactional(readOnly = true) // Mark as transactional and read-only for GET operations
+    public List<Order> getUserOrders(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+        // Use the new method that eagerly fetches details
+        return orderRepository.findByUserWithDetails(user);
+    }
+
+    /**
+     * Retrieves a single order by its ID.
+     * @param orderId The ID of the order.
+     * @return An Optional containing the Order if found.
+     */
+    @Transactional(readOnly = true) // Also mark this as transactional for consistency
+    public Optional<Order> getOrderById(Long orderId) {
+        // You might want a similar JOIN FETCH query here if orderItems/deliverySlot are needed
+        // for a single order view, or initialize them manually if accessed later.
+        return orderRepository.findById(orderId);
+    }
+
+    /**
+     * Reschedules the delivery slot for an existing order.
+     * @param orderId The ID of the order to reschedule.
+     * @param newDeliverySlotId The ID of the new delivery slot.
+     * @param newScheduledDeliveryTime The new exact scheduled delivery time.
+     * @return The updated Order object.
+     * @throws RuntimeException if order or new slot not found, or new slot is unavailable.
+     */
+    @Transactional
+    public Order rescheduleDelivery(Long orderId, Long newDeliverySlotId, LocalDateTime newScheduledDeliveryTime) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+
+        DeliverySlot oldSlot = order.getDeliverySlot(); // This might trigger lazy load
+        DeliverySlot newSlot = deliverySlotRepository.findById(newDeliverySlotId)
+                .orElseThrow(() -> new RuntimeException("New delivery slot not found with id: " + newDeliverySlotId));
+
+        if (!newSlot.isAvailable()) {
+            throw new RuntimeException("New chosen delivery slot is no longer available.");
+        }
+
+        // Decrement old slot's current bookings
+        if (oldSlot != null) {
+            oldSlot.setCurrentBookings(oldSlot.getCurrentBookings() - 1);
+            deliverySlotRepository.save(oldSlot);
+        }
+
+        // Increment new slot's current bookings
+        newSlot.setCurrentBookings(newSlot.getCurrentBookings() + 1);
+        deliverySlotRepository.save(newSlot);
+
+        order.setDeliverySlot(newSlot);
+        order.setScheduledDeliveryTime(newScheduledDeliveryTime);
+        order.setStatus(Order.OrderStatus.RESCHEDULED); // Update status
+        return orderRepository.save(order);
+    }
+
+    // You might add methods for order cancellation, status updates, etc.
+}
+
+
+
+ProductService.java
+
+package com.example.ecommerce.service;
+
+import com.example.ecommerce.model.Product;
+import com.example.ecommerce.repository.ProductRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Service layer for Product-related business logic.
+ */
+@Service
+public class ProductService {
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    public List<Product> getAllProducts() {
+        return productRepository.findAll();
+    }
+
+    public Optional<Product> getProductById(Long id) {
+        return productRepository.findById(id);
+    }
+
+    public Product createProduct(Product product) {
+        return productRepository.save(product);
+    }
+
+    public Product updateProduct(Long id, Product productDetails) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Product not found with id: " + id)); // Custom exception handling recommended
+        product.setName(productDetails.getName());
+        product.setDescription(productDetails.getDescription());
+        product.setPrice(productDetails.getPrice());
+        product.setImageUrl(productDetails.getImageUrl());
+        product.setCategory(productDetails.getCategory());
+        product.setStockQuantity(productDetails.getStockQuantity());
+        return productRepository.save(product);
+    }
+
+    public void deleteProduct(Long id) {
+        productRepository.deleteById(id);
+    }
+
+    public List<Product> getProductsByCategory(String category) {
+        return productRepository.findByCategory(category);
+    }
+}
+
+
+pom.xml
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.4.7</version> <!-- Your chosen Spring Boot version -->
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.example</groupId>
+	<artifactId>ecommerce</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>ecommerce</name>
+	<description>E-commerce application with delivery slot selection</description>
+
+	<properties>
+		<java.version>17</java.version>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<!-- Spring Security Starter -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<!-- JWT Dependencies -->
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>0.11.5</version>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>0.11.5</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>0.11.5</version>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!-- For PostgreSQL (as per your current application.properties) -->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<!-- If you were using MySQL, uncomment this and remove PostgreSQL -->
+		<!--
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.33</version>
+        </dependency>
+        -->
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<excludes>
+						<exclude>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+						</exclude>
+					</excludes>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+</project>
+
+
+
+application.properties
+
+# Database connection (PostgreSQL)
+spring.datasource.url=jdbc:postgresql://localhost:5432/ecommerce
+spring.datasource.username=postgres
+spring.datasource.password=sivanithi
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# Hibernate settings
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.properties.hibernate.format_sql=true
+
+# Server port (optional)
+server.port=8080
+
+# JWT Configuration
+jwt.secret-key=YOUR_GENERATED_BASE64_SECRET_KEY_HERE_PASTE_IT_HERE
+jwt.expiration=86400000
+# 24 hours in milliseconds (24 * 60 * 60 * 1000) - THIS COMMENT IS NOW ON A SEPARATE LINE
+
+
+
+application.properties
+
+# Database connection (PostgreSQL)
+spring.datasource.url=jdbc:postgresql://localhost:5432/ecommerce
+spring.datasource.username=postgres
+spring.datasource.password=sivanithi
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# Hibernate settings
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.properties.hibernate.format_sql=true
+
+# Server port (optional)
+server.port=8080
+
+# JWT Configuration
+jwt.secret-key=YOUR_GENERATED_BASE64_SECRET_KEY_HERE_PASTE_IT_HERE
+jwt.expiration=86400000
+# 24 hours in milliseconds (24 * 60 * 60 * 1000) - THIS COMMENT IS NOW ON A SEPARATE LINE
+
+
+
