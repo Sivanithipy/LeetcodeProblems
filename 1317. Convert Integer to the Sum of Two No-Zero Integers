@@ -1,0 +1,36 @@
+class Solution {
+    private boolean Zero(int x)
+    {
+        while(x>0)
+        {
+        if(x%10==0) return true;
+        x/=10;
+        }
+        return false;
+    }
+    
+    public int[] getNoZeroIntegers(int n) {
+        List<Integer> result = new ArrayList<>();
+        int a=1;
+        while(a<n)
+        {
+          int b=n-a;
+          if(!Zero(a) && !Zero(b))
+          {
+            result.add(a);
+            result.add(b);
+            break;
+          }
+          
+            a++;
+        }
+        int[] ans = new int[result.size()];
+        {
+            for(int i=0;i<result.size();i++)
+            {
+                ans[i] = result.get(i);
+            }
+        }
+        return ans;
+    }
+}
