@@ -1,0 +1,37 @@
+import java.util.*;
+
+class Solution {
+    public boolean canCross(int[] stones) {
+        Map<Integer,Integer> posMap = new HashMap<>();
+        for (int i = 0; i < stones.length; i++) posMap.put(stones[i], i);
+        Map<String, Boolean> memo = new HashMap<>();
+        return dfs(0, 0, stones, posMap, memo);
+    }
+
+    private boolean dfs(int index, int lastJump,
+                        int[] stones,
+                        Map<Integer,Integer> posMap,
+                        Map<String,Boolean> memo) {
+
+        if (index == stones.length - 1) return true;
+
+        String key = index + "," + lastJump;
+        if (memo.containsKey(key)) return memo.get(key);
+
+        for (int jump = lastJump - 1; jump <= lastJump + 1; jump++) 
+        {
+            if (jump <= 0) continue; 
+            int nextPos = stones[index] + jump;
+            if (posMap.containsKey(nextPos)) 
+            {
+                if (dfs(posMap.get(nextPos), jump, stones, posMap, memo)) 
+                {
+                    memo.put(key, true);
+                    return true;
+                }
+            }
+        }
+        memo.put(key, false);
+        return false;
+    }
+}
