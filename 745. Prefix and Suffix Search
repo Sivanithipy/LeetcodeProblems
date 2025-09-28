@@ -1,0 +1,22 @@
+import java.util.*;
+
+class WordFilter {
+    Map<String,Integer> map;
+    public WordFilter(String[] words) {
+        map = new HashMap<>();
+        for (int index = 0; index < words.length; index++) {
+            String w = words[index];
+            int n = w.length();
+            for (int i = 0; i <= n; i++) {
+                String prefix = w.substring(0, i);
+                for (int j = 0; j <= n; j++) {
+                    String suffix = w.substring(j);
+                    map.put(prefix + "#" + suffix, index);
+                }
+            }
+        }
+    }
+    public int f(String prefix, String suffix) {
+        return map.getOrDefault(prefix + "#" + suffix, -1);
+    }
+}
