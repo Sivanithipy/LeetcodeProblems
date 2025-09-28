@@ -1,0 +1,19 @@
+class Solution {
+    public int findMinMoves(int[] machines) {
+        int total = 0;
+        for (int x : machines) total += x;
+        int n = machines.length;
+        if (total % n != 0) return -1;   
+        int avg = total / n;
+        int moves = 0;
+        int balance = 0;
+
+        for (int load : machines) 
+        {
+            int diff = load - avg; 
+            balance += diff;         
+            moves = Math.max(moves, Math.max(Math.abs(balance), diff));
+        }
+        return moves;
+    }
+}
