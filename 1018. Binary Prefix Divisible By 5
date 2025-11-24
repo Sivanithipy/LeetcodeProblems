@@ -1,0 +1,12 @@
+class Solution {
+    public List<Boolean> prefixesDivBy5(int[] nums) {
+        List<Boolean> arr = new ArrayList<>();
+        int val = 0;
+        for(int bit : nums)
+        { 
+           val = (val * 2 + bit) % 5;
+           arr.add(val == 0);
+        }
+        return arr;
+    }
+}
